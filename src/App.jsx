@@ -1,16 +1,22 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Home from './components/Home';
 import SearchBar from './components/SearchBar';
 import FilterPanel from './components/FilterPanel';
 import QuizList from './components/QuizList';
 import QuizSession from './components/QuizSession';
 import PastQuizzes from './components/PastQuizzes';
+import Login from './components/auth/Login';
+import SignUp from './components/auth/SignUp';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 import { sampleQuizzes } from './data/quizzes';
 
-function App() {
+function AppContent() {
+  const { user, loading } = useAuth();
   const [currentView, setCurrentView] = useState('home'); // 'home', 'library', 'quiz', or 'pastQuizzes'
   const [activeQuiz, setActiveQuiz] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showLogin, setShowLogin] = useState(!user); // Show login by default if not authenticated
+  const [showSignUp, setShowSignUp] = useState(false);
   const [filters, setFilters] = useState({
     categories: [],
     difficulty: '',
@@ -18,7 +24,7 @@ function App() {
     speedOnly: false
   });
 
-  // Filter and search logic
+  // Filter and search logic - MUST be before any conditional returns
   const filteredQuizzes = useMemo(() => {
     let filtered = sampleQuizzes;
 
@@ -56,6 +62,15 @@ function App() {
 
     return filtered;
   }, [searchTerm, filters]);
+
+  // Handle authentication state changes
+  useEffect(() => {
+    if (user) {
+      setShowLogin(false); // Hide login when user is authenticated
+    } else {
+      setShowLogin(true); // Show login when user is not authenticated
+    }
+  }, [user]);
 
   const handleStartQuiz = (quiz) => {
     setActiveQuiz(quiz);
@@ -95,6 +110,71 @@ function App() {
   const handleGoToLibrary = () => {
     setCurrentView('library');
   };
+
+  // Show loading spinner while checking auth - AFTER all hooks
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-spurs-navy flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-spurs-gold mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading your Spurs experience...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login screen if not authenticated
+  if (!user) {
+    return (
+      <>
+        {showLogin && (
+          <Login
+            onClose={() => setShowLogin(false)}
+            onSwitchToSignUp={() => {
+              setShowLogin(false);
+              setShowSignUp(true);
+            }}
+          />
+        )}
+
+        {showSignUp && (
+          <SignUp
+            onClose={() => setShowSignUp(false)}
+            onSwitchToLogin={() => {
+              setShowSignUp(false);
+              setShowLogin(true);
+            }}
+          />
+        )}
+
+        {/* Fallback background if modals are closed */}
+        {!showLogin && !showSignUp && (
+          <div className="min-h-screen bg-spurs-navy flex items-center justify-center">
+            <div className="text-center">
+              <div className="flex justify-center mb-8">
+                <div className="bg-white rounded-full p-4 shadow-2xl">
+                  <img 
+                    src="/spurs-logo.png" 
+                    alt="Tottenham Hotspur Logo" 
+                    className="w-32 h-32 object-contain"
+                    loading="eager"
+                  />
+                </div>
+              </div>
+              <h1 className="text-4xl font-bold text-white mb-4">Welcome to Spurs Trivia</h1>
+              <p className="text-white opacity-80 mb-8">Please sign in to continue</p>
+              <button
+                onClick={() => setShowLogin(true)}
+                className="bg-spurs-gold hover:bg-yellow-500 text-spurs-navy px-8 py-3 rounded-lg font-bold text-lg transition-all duration-200 transform hover:scale-105"
+              >
+                Sign In
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   // Show quiz session if in quiz mode
   if (currentView === 'quiz') {
@@ -147,13 +227,24 @@ function App() {
                 >
                   Past Quizzes
                 </button>
+                {user ? (
+                  <UserMenu />
+                ) : (
+                  <button
+                    onClick={() => setShowLogin(true)}
+                    className="bg-spurs-gold hover:bg-yellow-500 text-spurs-navy px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                  >
+                    Login
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </header>
         <Home 
           onStartQuiz={handleGoToLibrary} 
-          onViewPastQuizzes={handleViewPastQuizzes} 
+          onViewPastQuizzes={handleViewPastQuizzes}
+          onShowLogin={() => setShowLogin(true)}
         />
       </div>
     );
@@ -190,6 +281,16 @@ function App() {
               >
                 Past Quizzes
               </button>
+              {user ? (
+                <UserMenu />
+              ) : (
+                <button
+                  onClick={() => setShowLogin(true)}
+                  className="bg-spurs-gold hover:bg-yellow-500 text-spurs-navy px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                >
+                  Login
+                </button>
+              )}
             </div>
             
             {/* Mobile Navigation */}
@@ -287,7 +388,82 @@ function App() {
           </div>
         </div>
       </footer>
+
     </div>
+  );
+
+  // UserMenu component for authenticated users
+  function UserMenu() {
+    const { user, profile, signOut } = useAuth();
+    const [isOpen, setIsOpen] = useState(false);
+
+    const handleSignOut = async () => {
+      await signOut();
+      setIsOpen(false);
+    };
+
+    return (
+      <div className="relative">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center space-x-2 text-white hover:text-spurs-gold transition-colors duration-200"
+        >
+          <div className="w-8 h-8 bg-spurs-gold rounded-full flex items-center justify-center">
+            <span className="text-spurs-navy font-bold text-sm">
+              {profile?.display_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
+            </span>
+          </div>
+          <span className="hidden md:inline font-medium">
+            {profile?.display_name || user?.email?.split('@')[0] || 'User'}
+          </span>
+          <svg
+            className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {isOpen && (
+          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+            <div className="py-2">
+              <div className="px-4 py-2 border-b border-gray-100">
+                <p className="text-sm font-medium text-gray-900">
+                  {profile?.display_name || 'Spurs Fan'}
+                </p>
+                <p className="text-xs text-gray-500">{user?.email}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  // Could open profile modal here
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                Profile Settings
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+}
+
+// Main App component with AuthProvider
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

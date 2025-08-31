@@ -1,7 +1,7 @@
 import React from 'react';
 import { sampleQuizzes } from '../data/quizzes';
 
-const Home = ({ onStartQuiz, onViewPastQuizzes }) => {
+const Home = ({ onStartQuiz, onViewPastQuizzes, onShowLogin }) => {
   // Get featured quizzes (first 3)
   const featuredQuizzes = sampleQuizzes.slice(0, 3);
   
