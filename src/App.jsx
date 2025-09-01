@@ -7,16 +7,27 @@ import QuizSession from './components/QuizSession';
 import PastQuizzes from './components/PastQuizzes';
 import Login from './components/auth/Login';
 import SignUp from './components/auth/SignUp';
+import ProfileSettings from './components/ProfileSettings';
 import { AuthProvider, useAuth } from './hooks/useAuth';
-import { sampleQuizzes } from './data/quizzes';
+import { useQuizzes } from './hooks/useQuizzes';
+import { useQuestions } from './hooks/useQuestions';
+import { supabase } from './lib/supabase';
 
 function AppContent() {
   const { user, loading } = useAuth();
+  const { quizzes, loading: quizzesLoading, error: quizzesError } = useQuizzes();
   const [currentView, setCurrentView] = useState('home'); // 'home', 'library', 'quiz', or 'pastQuizzes'
   const [activeQuiz, setActiveQuiz] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showLogin, setShowLogin] = useState(!user); // Show login by default if not authenticated
   const [showSignUp, setShowSignUp] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
+
+  // Debug function to track profile settings state
+  const handleOpenProfileSettings = () => {
+    console.log('🚀 Opening Profile Settings modal...');
+    setShowProfileSettings(true);
+  };
   const [filters, setFilters] = useState({
     categories: [],
     difficulty: '',
@@ -26,7 +37,7 @@ function AppContent() {
 
   // Filter and search logic - MUST be before any conditional returns
   const filteredQuizzes = useMemo(() => {
-    let filtered = sampleQuizzes;
+    let filtered = quizzes;
 
     // Apply search filter
     if (searchTerm.trim()) {
@@ -61,7 +72,7 @@ function AppContent() {
     }
 
     return filtered;
-  }, [searchTerm, filters]);
+  }, [quizzes, searchTerm, filters]);
 
   // Handle authentication state changes
   useEffect(() => {
@@ -82,9 +93,56 @@ function AppContent() {
     setActiveQuiz(null);
   };
 
-  const handleCompleteQuiz = (quizData) => {
-    // Handle quiz completion - could save to backend in the future
-    console.log('Quiz completed:', quizData);
+  const handleCompleteQuiz = async (quizData) => {
+    // Save quiz attempt to database
+    try {
+      if (!user) {
+        console.log('No user logged in, cannot save quiz attempt');
+        return;
+      }
+
+      const { quiz, questions, userAnswers, timeSpent, completedAt } = quizData;
+      
+      // Calculate score
+      let correctAnswers = 0;
+      const detailedAnswers = questions.map((question, index) => {
+        const userAnswer = userAnswers[index];
+        const isCorrect = userAnswer === question.correctAnswer;
+        if (isCorrect) correctAnswers++;
+        
+        return {
+          question: question.text,
+          userAnswer: userAnswer || 'No answer provided',
+          correctAnswer: question.correctAnswer,
+          isCorrect
+        };
+      });
+
+      const percentage = Math.round((correctAnswers / questions.length) * 100);
+
+      // Save to database
+      const { error } = await supabase
+        .from('quiz_attempts')
+        .insert({
+          user_id: user.id,
+          quiz_id: quiz.id,
+          quiz_name: quiz.title,
+          score: correctAnswers,
+          total_questions: questions.length,
+          percentage: percentage,
+          time_taken: timeSpent,
+          answers: detailedAnswers,
+          completed_at: completedAt.toISOString()
+        });
+
+      if (error) {
+        console.error('Error saving quiz attempt:', error);
+      } else {
+        console.log('Quiz attempt saved successfully');
+      }
+    } catch (err) {
+      console.error('Error saving quiz attempt:', err);
+    }
   };
 
   const handleSearchChange = (value) => {
@@ -111,13 +169,18 @@ function AppContent() {
     setCurrentView('library');
   };
 
-  // Show loading spinner while checking auth - AFTER all hooks
-  if (loading) {
+  // Show loading spinner while checking auth or loading quizzes - AFTER all hooks
+  if (loading || quizzesLoading) {
     return (
       <div className="min-h-screen bg-spurs-navy flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-spurs-gold mx-auto mb-4"></div>
           <p className="text-white text-lg">Loading your Spurs experience...</p>
+          {quizzesError && (
+            <p className="text-red-300 text-sm mt-2">
+              Error loading quizzes: {quizzesError}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -179,7 +242,7 @@ function AppContent() {
   // Show quiz session if in quiz mode
   if (currentView === 'quiz') {
     return (
-      <QuizSession
+      <QuizSessionWrapper
         quiz={activeQuiz}
         onExitQuiz={handleExitQuiz}
         onCompleteQuiz={handleCompleteQuiz}
@@ -194,63 +257,68 @@ function AppContent() {
     );
   }
 
-  // Show home page if in home mode
-  if (currentView === 'home') {
-    return (
-      <div>
-        {/* Simplified Header for Home */}
-        <header className="bg-spurs-navy text-white shadow-lg">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <img 
-                  src="/spurs-logo.png" 
-                  alt="Tottenham Hotspur Logo" 
-                  className="w-8 h-8 md:w-10 md:h-10 object-contain filter brightness-0 invert"
-                  loading="lazy"
-                />
-                <div>
-                  <h1 className="text-2xl font-bold">Spurs Trivia</h1>
-                  <p className="text-spurs-white opacity-90">Come On You Spurs!</p>
+    // Render the main content based on current view
+  const renderMainContent = () => {
+    // Show home page if in home mode
+    if (currentView === 'home') {
+      return (
+        <div>
+          {/* Simplified Header for Home */}
+          <header className="bg-spurs-navy text-white shadow-lg">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <img 
+                    src="/spurs-logo.png" 
+                    alt="Tottenham Hotspur Logo" 
+                    className="w-8 h-8 md:w-10 md:h-10 object-contain filter brightness-0 invert"
+                    loading="lazy"
+                  />
+                  <div>
+                    <h1 className="text-2xl font-bold">Spurs Trivia</h1>
+                    <p className="text-spurs-white opacity-90">Come On You Spurs!</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-6">
+                  <button
+                    onClick={handleGoToLibrary}
+                    className="text-white hover:text-spurs-gold font-medium transition-colors duration-200"
+                  >
+                    Quiz Library
+                  </button>
+                  <button
+                    onClick={handleViewPastQuizzes}
+                    className="text-white hover:text-spurs-gold font-medium transition-colors duration-200"
+                  >
+                    Past Quizzes
+                  </button>
+                  {user ? (
+                    <UserMenu onOpenSettings={handleOpenProfileSettings} />
+                  ) : (
+                    <button
+                      onClick={() => setShowLogin(true)}
+                      className="bg-spurs-gold hover:bg-yellow-500 text-spurs-navy px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                    >
+                      Login
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center space-x-6">
-                <button
-                  onClick={handleGoToLibrary}
-                  className="text-white hover:text-spurs-gold font-medium transition-colors duration-200"
-                >
-                  Quiz Library
-                </button>
-                <button
-                  onClick={handleViewPastQuizzes}
-                  className="text-white hover:text-spurs-gold font-medium transition-colors duration-200"
-                >
-                  Past Quizzes
-                </button>
-                {user ? (
-                  <UserMenu />
-                ) : (
-                  <button
-                    onClick={() => setShowLogin(true)}
-                    className="bg-spurs-gold hover:bg-yellow-500 text-spurs-navy px-4 py-2 rounded-lg font-medium transition-colors duration-200"
-                  >
-                    Login
-                  </button>
-                )}
-              </div>
             </div>
-          </div>
-        </header>
-        <Home 
-          onStartQuiz={handleGoToLibrary} 
-          onViewPastQuizzes={handleViewPastQuizzes}
-          onShowLogin={() => setShowLogin(true)}
-        />
-      </div>
-    );
-  }
+          </header>
+          <Home
+            onStartQuiz={handleGoToLibrary}
+            onViewPastQuizzes={handleViewPastQuizzes}
+            onShowLogin={() => setShowLogin(true)}
+            quizzes={quizzes}
+            quizzesLoading={quizzesLoading}
+          />
+        </div>
+      );
+    }
 
-  return (
+    // Default view - Quiz Library
+    return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-spurs-navy text-white shadow-lg">
@@ -282,7 +350,7 @@ function AppContent() {
                 Past Quizzes
               </button>
               {user ? (
-                <UserMenu />
+                <UserMenu onOpenSettings={handleOpenProfileSettings} />
               ) : (
                 <button
                   onClick={() => setShowLogin(true)}
@@ -389,73 +457,193 @@ function AppContent() {
         </div>
       </footer>
 
-    </div>
-  );
-
-  // UserMenu component for authenticated users
-  function UserMenu() {
-    const { user, profile, signOut } = useAuth();
-    const [isOpen, setIsOpen] = useState(false);
-
-    const handleSignOut = async () => {
-      await signOut();
-      setIsOpen(false);
-    };
-
-    return (
-      <div className="relative">
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center space-x-2 text-white hover:text-spurs-gold transition-colors duration-200"
-        >
-          <div className="w-8 h-8 bg-spurs-gold rounded-full flex items-center justify-center">
-            <span className="text-spurs-navy font-bold text-sm">
-              {profile?.display_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
-            </span>
-          </div>
-          <span className="hidden md:inline font-medium">
-            {profile?.display_name || user?.email?.split('@')[0] || 'User'}
-          </span>
-          <svg
-            className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      {/* Debug Button (remove after testing) */}
+      {user && (
+        <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 1000 }}>
+          <button
+            onClick={handleOpenProfileSettings}
+            className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+            🐛 Test Profile Settings
+          </button>
+        </div>
+      )}
 
-        {isOpen && (
-          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-            <div className="py-2">
-              <div className="px-4 py-2 border-b border-gray-100">
-                <p className="text-sm font-medium text-gray-900">
-                  {profile?.display_name || 'Spurs Fan'}
-                </p>
-                <p className="text-xs text-gray-500">{user?.email}</p>
-              </div>
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  // Could open profile modal here
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-              >
-                Profile Settings
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Profile Settings Modal */}
+      {showProfileSettings && (
+        <ProfileSettings
+          onClose={() => {
+            console.log('🔄 Closing Profile Settings modal...');
+            setShowProfileSettings(false);
+          }}
+        />
+      )}
+
+    </div>
+    );
+  };
+
+  // Main render with modals that are available from all views
+  return (
+    <>
+      {renderMainContent()}
+      
+      {/* Debug Button (remove after testing) */}
+      {user && (
+        <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 1000 }}>
+          <button
+            onClick={handleOpenProfileSettings}
+            className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg"
+          >
+            🐛 Test Profile Settings
+          </button>
+        </div>
+      )}
+
+      {/* Profile Settings Modal - Available from all views */}
+      {showProfileSettings && (
+        <ProfileSettings
+          onClose={() => {
+            console.log('🔄 Closing Profile Settings modal...');
+            setShowProfileSettings(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// QuizSessionWrapper component that fetches questions for a quiz
+function QuizSessionWrapper({ quiz, onExitQuiz, onCompleteQuiz }) {
+  const { questions, loading: questionsLoading, error: questionsError } = useQuestions(quiz?.id);
+
+  if (questionsLoading) {
+    return (
+      <div className="min-h-screen bg-spurs-navy flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-spurs-gold mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading quiz questions...</p>
+        </div>
       </div>
     );
   }
+
+  if (questionsError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">😔</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load quiz</h3>
+          <p className="text-gray-600 mb-4">Error: {questionsError}</p>
+          <button
+            onClick={onExitQuiz}
+            className="bg-spurs-navy hover:bg-spurs-blue text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
+          >
+            Back to Library
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📝</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No questions available</h3>
+          <p className="text-gray-600 mb-4">This quiz doesn't have any questions yet.</p>
+          <button
+            onClick={onExitQuiz}
+            className="bg-spurs-navy hover:bg-spurs-blue text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
+          >
+            Back to Library
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <QuizSession
+      quiz={quiz}
+      questions={questions}
+      onExitQuiz={onExitQuiz}
+      onCompleteQuiz={onCompleteQuiz}
+    />
+  );
+}
+
+// UserMenu component for authenticated users
+function UserMenu({ onOpenSettings }) {
+  const { user, profile, signOut } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    setIsOpen(false);
+  };
+
+  const handleOpenSettings = () => {
+    console.log('🎯 Profile Settings clicked!', { onOpenSettings: !!onOpenSettings });
+    setIsOpen(false);
+    if (onOpenSettings) {
+      onOpenSettings();
+    } else {
+      console.error('❌ onOpenSettings prop is missing!');
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center space-x-2 text-white hover:text-spurs-gold transition-colors duration-200"
+      >
+        <div className="w-8 h-8 bg-spurs-gold rounded-full flex items-center justify-center">
+          <span className="text-spurs-navy font-bold text-sm">
+            {profile?.display_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
+          </span>
+        </div>
+        <span className="hidden md:inline font-medium">
+          {profile?.display_name || user?.email?.split('@')[0] || 'User'}
+        </span>
+        <svg
+          className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+          <div className="py-2">
+            <div className="px-4 py-2 border-b border-gray-100">
+              <p className="text-sm font-medium text-gray-900">
+                {profile?.display_name || 'Spurs Fan'}
+              </p>
+              <p className="text-xs text-gray-500">{user?.email}</p>
+            </div>
+            <button
+              onClick={handleOpenSettings}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              Profile Settings
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Main App component with AuthProvider

@@ -3,11 +3,10 @@ import ProgressBar from './quiz/ProgressBar';
 import MCQuestion from './quiz/MCQuestion';
 import TypingQuestion from './quiz/TypingQuestion';
 import QuizSummary from './quiz/QuizSummary';
-import { sampleQuestions } from '../data/sampleQuestions';
 
 const QuizSession = ({ 
   quiz = null, 
-  questions = sampleQuestions, // Default to sample questions, but allow prop override for future backend integration
+  questions = [], // Questions are now required to be passed as prop
   onExitQuiz,
   onCompleteQuiz 
 }) => {

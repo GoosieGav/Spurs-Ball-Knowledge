@@ -1,12 +1,11 @@
 import React from 'react';
-import { sampleQuizzes } from '../data/quizzes';
 
-const Home = ({ onStartQuiz, onViewPastQuizzes, onShowLogin }) => {
-  // Get featured quizzes (first 3)
-  const featuredQuizzes = sampleQuizzes.slice(0, 3);
+const Home = ({ onStartQuiz, onViewPastQuizzes, onShowLogin, quizzes = [], quizzesLoading = false }) => {
+  // Get featured quizzes (all available quizzes, max 3)
+  const featuredQuizzes = quizzes.slice(0, 3);
   
   // Get speed quizzes count
-  const speedQuizzes = sampleQuizzes.filter(quiz => quiz.isSpeedQuiz || quiz.type === 'Speed');
+  const speedQuizzes = quizzes.filter(quiz => quiz.isSpeedQuiz || quiz.type === 'Speed');
 
   return (
     <div className="min-h-screen relative">
@@ -101,7 +100,7 @@ const Home = ({ onStartQuiz, onViewPastQuizzes, onShowLogin }) => {
               <div className="bg-spurs-navy text-white rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 text-2xl">
                 📚
               </div>
-              <div className="text-3xl font-bold text-spurs-navy">{sampleQuizzes.length}</div>
+              <div className="text-3xl font-bold text-spurs-navy">{quizzes.length}</div>
               <div className="text-gray-600">Total Quizzes</div>
             </div>
             
@@ -126,32 +125,92 @@ const Home = ({ onStartQuiz, onViewPastQuizzes, onShowLogin }) => {
 
       {/* Featured Quizzes Section */}
       <div className="bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Featured Quizzes</h2>
             <p className="text-gray-600 text-lg">Start with these popular challenges</p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {featuredQuizzes.map((quiz, index) => (
-              <div key={quiz.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-3xl">{quiz.thumbnail}</div>
-                    <div className="flex space-x-1">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
+            {quizzesLoading ? (
+              // Loading state
+              Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="bg-white rounded-xl shadow-lg overflow-hidden animate-pulse">
+                  <div className="h-48 bg-gray-300"></div>
+                  <div className="p-6">
+                    <div className="h-6 bg-gray-300 rounded mb-2"></div>
+                    <div className="h-4 bg-gray-300 rounded mb-4"></div>
+                    <div className="flex justify-between items-center">
+                      <div className="flex space-x-2">
+                        <div className="h-6 w-12 bg-gray-300 rounded"></div>
+                        <div className="h-6 w-16 bg-gray-300 rounded"></div>
+                      </div>
+                      <div className="h-8 w-16 bg-gray-300 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : featuredQuizzes.length === 0 ? (
+              // Empty state
+              <div className="col-span-full text-center py-12">
+                <div className="text-6xl mb-4">🤔</div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No quizzes available yet</h3>
+                <p className="text-gray-600">Check back soon for new Spurs trivia challenges!</p>
+              </div>
+            ) : (
+              // Quiz cards
+              featuredQuizzes.map((quiz, index) => (
+              <div key={quiz.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group">
+                {/* Quiz Image */}
+                {quiz.imageUrl && (
+                  <div className="relative h-48 overflow-hidden">
+                    <img 
+                      src={quiz.imageUrl}
+                      alt={quiz.imageAlt || quiz.title}
+                      className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                    {/* Overlay with thumbnail emoji */}
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-lg">
+                      <span className="text-2xl">{quiz.thumbnail}</span>
+                    </div>
+                    {/* Categories overlay */}
+                    <div className="absolute top-3 left-3 flex space-x-1">
                       {quiz.categories.slice(0, 2).map((category, catIndex) => (
-                        <span key={catIndex} className="bg-spurs-blue text-white px-2 py-1 rounded text-xs">
+                        <span key={catIndex} className="bg-spurs-blue/90 text-white px-2 py-1 rounded text-xs font-medium backdrop-blur-sm">
                           {category}
                         </span>
                       ))}
                     </div>
                   </div>
-                  
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">{quiz.title}</h3>
-                  <p className="text-gray-600 text-sm mb-4 leading-relaxed">{quiz.description}</p>
+                )}
+
+                {/* Fallback for quizzes without images */}
+                {!quiz.imageUrl && (
+                  <div className="p-6 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <div className="text-3xl">{quiz.thumbnail}</div>
+                      <div className="flex space-x-1">
+                        {quiz.categories.slice(0, 2).map((category, catIndex) => (
+                          <span key={catIndex} className="bg-spurs-blue text-white px-2 py-1 rounded text-xs">
+                            {category}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-spurs-navy transition-colors">
+                    {quiz.title}
+                  </h3>
+                  <p className="text-gray-600 text-sm mb-4 leading-relaxed">
+                    {quiz.description}
+                  </p>
                   
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                    <div className="flex items-center space-x-3 text-xs text-gray-500">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         quiz.difficulty === 'Easy' ? 'bg-green-100 text-green-800' :
                         quiz.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
@@ -159,32 +218,49 @@ const Home = ({ onStartQuiz, onViewPastQuizzes, onShowLogin }) => {
                       }`}>
                         {quiz.difficulty}
                       </span>
-                      <span>{quiz.questionCount} questions</span>
+                      <span className="flex items-center">
+                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {quiz.questionCount}
+                      </span>
+                      <span className="flex items-center">
+                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {quiz.estimatedTime}
+                      </span>
                     </div>
                     
                     <button 
-                      onClick={onStartQuiz}
-                      className="bg-spurs-navy hover:bg-spurs-blue text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+                      onClick={() => onStartQuiz(quiz)}
+                      className="bg-spurs-navy hover:bg-spurs-blue text-white px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200 transform hover:scale-105 flex items-center space-x-2"
                     >
-                      Start
+                      <span>Start</span>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
                     </button>
                   </div>
                 </div>
               </div>
-            ))}
+              ))
+            )}
           </div>
           
-          <div className="text-center mt-12">
-            <button
-              onClick={onStartQuiz}
-              className="bg-spurs-navy hover:bg-spurs-blue text-white px-8 py-3 rounded-lg font-semibold transition-colors duration-200 inline-flex items-center space-x-2"
-            >
-              <span>View All Quizzes</span>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+          {!quizzesLoading && featuredQuizzes.length > 0 && (
+            <div className="text-center mt-12">
+              <button
+                onClick={onStartQuiz}
+                className="bg-spurs-navy hover:bg-spurs-blue text-white px-8 py-3 rounded-lg font-semibold transition-colors duration-200 inline-flex items-center space-x-2"
+              >
+                <span>View All Quizzes</span>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

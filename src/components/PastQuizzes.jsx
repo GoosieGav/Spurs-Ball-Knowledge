@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { pastQuizAttempts, calculateOverallStats, getScoreColor, formatDate } from '../data/pastQuizzes';
+import { useQuizAttempts, calculateOverallStats, getScoreColor, formatDate } from '../hooks/useQuizAttempts';
 
 const PastQuizzes = ({ onBackToLibrary }) => {
   const [expandedQuiz, setExpandedQuiz] = useState(null);
+  const { attempts, loading, error } = useQuizAttempts();
   
-  const stats = calculateOverallStats(pastQuizAttempts);
+  const stats = calculateOverallStats(attempts);
 
   const toggleExpand = (quizId) => {
     setExpandedQuiz(expandedQuiz === quizId ? null : quizId);
@@ -105,19 +106,19 @@ const PastQuizzes = ({ onBackToLibrary }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {pastQuizAttempts.filter(quiz => quiz.percent >= 80).length}
+                {attempts.filter(quiz => quiz.percent >= 80).length}
               </div>
               <div className="text-sm text-gray-600">Excellent (&ge;80%)</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-yellow-600">
-                {pastQuizAttempts.filter(quiz => quiz.percent >= 50 && quiz.percent < 80).length}
+                {attempts.filter(quiz => quiz.percent >= 50 && quiz.percent < 80).length}
               </div>
               <div className="text-sm text-gray-600">Good (50-79%)</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-red-600">
-                {pastQuizAttempts.filter(quiz => quiz.percent < 50).length}
+                {attempts.filter(quiz => quiz.percent < 50).length}
               </div>
               <div className="text-sm text-gray-600">Needs Practice (&lt;50%)</div>
             </div>
@@ -128,8 +129,58 @@ const PastQuizzes = ({ onBackToLibrary }) => {
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Quiz History</h2>
           
-          <div className="space-y-4">
-            {pastQuizAttempts.map((attempt) => (
+          {loading ? (
+            // Loading state
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 animate-pulse">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+                      <div>
+                        <div className="h-5 w-48 bg-gray-300 rounded mb-2"></div>
+                        <div className="h-3 w-24 bg-gray-300 rounded"></div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-6">
+                      <div className="h-8 w-16 bg-gray-300 rounded"></div>
+                      <div className="h-6 w-12 bg-gray-300 rounded"></div>
+                      <div className="h-5 w-5 bg-gray-300 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            // Error state
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">😟</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load quiz history</h3>
+              <p className="text-gray-600 mb-4">Error: {error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-spurs-navy hover:bg-spurs-blue text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : attempts.length === 0 ? (
+            // Empty state
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📚</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No quiz attempts yet</h3>
+              <p className="text-gray-600 mb-6">Start taking quizzes to see your progress here!</p>
+              <button
+                onClick={onBackToLibrary}
+                className="bg-spurs-navy hover:bg-spurs-blue text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
+              >
+                Take Your First Quiz
+              </button>
+            </div>
+          ) : (
+            // Quiz attempts list
+            <div className="space-y-4">
+              {attempts.map((attempt) => (
               <div key={attempt.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 {/* Quiz Summary Card */}
                 <div 
@@ -253,8 +304,9 @@ const PastQuizzes = ({ onBackToLibrary }) => {
                   </div>
                 )}
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Call to Action */}

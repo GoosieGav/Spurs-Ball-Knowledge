@@ -30,7 +30,15 @@
   }
   
   .quiz-card {
-    @apply bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 p-6 border border-gray-200;
+    @apply bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 border border-gray-200;
+  }
+  
+  .quiz-card-content {
+    @apply p-6;
+  }
+  
+  .quiz-card:hover {
+    @apply shadow-xl transform -translate-y-1;
   }
   
   .filter-button {

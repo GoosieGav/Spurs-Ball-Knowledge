@@ -16,14 +16,21 @@ const Login = ({ onSwitchToSignUp, onClose }) => {
     setLoading(true);
     setError('');
 
-    const { error } = await signIn(email, password);
-    
-    if (error) {
-      setError(error.message);
-    } else {
-      onClose?.();
+    try {
+      const { error } = await signIn(email, password, { rememberMe });
+      
+      if (error) {
+        setError(error.message);
+      } else {
+        // Close the modal after successful login
+        onClose?.();
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
 
@@ -56,7 +63,7 @@ const Login = ({ onSwitchToSignUp, onClose }) => {
               />
             </div>
           </div>
-          <h2 className="text-3xl font-bold text-spurs-navy mb-2">Login #10</h2>
+          <h2 className="text-3xl font-bold text-spurs-navy mb-2">Login</h2>
           <p className="text-gray-600">Welcome back, Spurs fan!</p>
         </div>
 

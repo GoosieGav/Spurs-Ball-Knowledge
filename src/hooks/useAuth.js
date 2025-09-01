@@ -20,12 +20,34 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Get initial session
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        await fetchProfile(session.user.id)
+      try {
+        console.log('🔍 Checking initial session...')
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('❌ Error getting session:', error)
+          setUser(null)
+          setProfile(null)
+          setLoading(false)
+          return
+        }
+
+        console.log('✅ Initial session check completed:', session?.user?.email || 'No user')
+        setUser(session?.user ?? null)
+        setLoading(false) // Set loading false immediately after setting user
+        
+        // Fetch profile asynchronously without blocking the auth flow
+        if (session?.user) {
+          fetchProfile(session.user.id).catch(error => {
+            console.error('Profile fetch failed but continuing:', error)
+          })
+        }
+      } catch (error) {
+        console.error('❌ Error in getSession:', error)
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
       }
-      setLoading(false)
     }
 
     getSession()
@@ -33,36 +55,59 @@ export const AuthProvider = ({ children }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await fetchProfile(session.user.id)
-        } else {
-          setProfile(null)
+        console.log('🔄 Auth state changed:', event, session?.user?.email || 'No user')
+        
+        try {
+          setUser(session?.user ?? null)
+          setLoading(false) // Set loading false immediately
+          
+          // Handle profile fetching asynchronously
+          if (session?.user) {
+            fetchProfile(session.user.id).catch(error => {
+              console.error('Profile fetch failed but continuing:', error)
+            })
+          } else {
+            setProfile(null)
+          }
+        } catch (error) {
+          console.error('❌ Error in auth state change:', error)
+          setLoading(false)
         }
-        setLoading(false)
       }
     )
 
     return () => subscription.unsubscribe()
   }, [])
 
-  // Fetch user profile
+  // Fetch user profile with timeout
   const fetchProfile = async (userId) => {
     try {
-      const { data, error } = await supabase
+      console.log('🔍 Fetching profile for user:', userId)
+      
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000) // 5 second timeout
+      })
+      
+      // Race between the actual fetch and timeout
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
+      
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise])
 
       if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching profile:', error)
+        console.error('❌ Error fetching profile:', error)
         return
       }
 
+      console.log('✅ Profile fetched successfully:', data?.display_name || 'No name')
       setProfile(data)
     } catch (error) {
-      console.error('Error in fetchProfile:', error)
+      console.error('❌ Error in fetchProfile:', error)
+      // Don't block the app if profile fetch fails
     }
   }
 
@@ -91,14 +136,28 @@ export const AuthProvider = ({ children }) => {
   }
 
   // Sign in
-  const signIn = async (email, password) => {
+  const signIn = async (email, password, options = {}) => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        password
+        password,
+        options: {
+          // Set session persistence based on rememberMe
+          ...(options.rememberMe && { 
+            data: { remember: true } 
+          })
+        }
       })
 
       if (error) throw error
+      
+      // Store remember preference in localStorage for persistence
+      if (options.rememberMe) {
+        localStorage.setItem('spurs_remember_me', 'true')
+      } else {
+        localStorage.removeItem('spurs_remember_me')
+      }
+      
       return { data, error: null }
     } catch (error) {
       return { data: null, error }
@@ -148,6 +207,34 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  // Update password
+  const updatePassword = async (newPassword) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+
+      if (error) throw error
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
+  }
+
+  // Update email
+  const updateEmail = async (newEmail) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        email: newEmail
+      })
+
+      if (error) throw error
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
+  }
+
   // Update profile
   const updateProfile = async (updates) => {
     try {
@@ -166,6 +253,41 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  // Force refresh session (useful for debugging)
+  const refreshSession = async () => {
+    try {
+      setLoading(true)
+      const { data: { session }, error } = await supabase.auth.refreshSession()
+      
+      if (error) {
+        console.error('Error refreshing session:', error)
+        setUser(null)
+        setProfile(null)
+        return { error }
+      }
+
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        await fetchProfile(session.user.id)
+      }
+      
+      return { error: null }
+    } catch (error) {
+      console.error('Error in refreshSession:', error)
+      return { error }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Clear all auth data (useful for debugging)
+  const clearAuthData = () => {
+    setUser(null)
+    setProfile(null)
+    setLoading(false)
+    localStorage.removeItem('spurs_remember_me')
+  }
+
   const value = {
     user,
     profile,
@@ -175,8 +297,12 @@ export const AuthProvider = ({ children }) => {
     signInWithProvider,
     signOut,
     resetPassword,
+    updatePassword,
+    updateEmail,
     updateProfile,
-    fetchProfile
+    fetchProfile,
+    refreshSession,
+    clearAuthData
   }
 
   return (
